@@ -1,0 +1,4 @@
+\c template1
+CREATE EXTENSION IF NOT EXISTS vector;
+\c grafida
+CREATE EXTENSION IF NOT EXISTS vector;
