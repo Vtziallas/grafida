@@ -2,8 +2,10 @@ from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile)
 from sqlalchemy.orm import Session
 
 from app.agents.pii_scrub import scrub
+from app.ai.factory import get_provider
 from app.api.cases import get_case
 from app.audit import audit
+from app.search.index import index_text
 from app.auth.deps import get_current_user
 from app.db import get_db
 from app.files.extract import extract_text
@@ -38,6 +40,8 @@ async def upload_evidence(case_id: int, file: UploadFile = File(...),
                  description=description or file.filename, file_path=path,
                  extracted_text=text, ocr_pending=pending)
     db.add(e); db.flush()
+    if text:
+        index_text(db, user.id, "evidence", e.id, case_id, text, get_provider())
     audit(db, user.id, "upload.evidence", "evidence", e.id); db.commit()
     return {"id": e.id, "exhibit_number": n, "ocr_pending": pending}
 
@@ -57,6 +61,10 @@ async def upload_sample(file: UploadFile = File(...),
                     file_path=path, original_text=text, scrubbed_text=scrubbed,
                     status="ocr_pending" if pending else "ok")
     db.add(s); db.flush()
+    if s.scrubbed_text:
+        provider = get_provider()
+        s.embedding = provider.embed([s.scrubbed_text[:2000]])[0]
+        index_text(db, user.id, "sample", s.id, None, s.scrubbed_text, provider)
     audit(db, user.id, "upload.sample", "style_sample", s.id); db.commit()
     return {"id": s.id, "status": s.status}
 
