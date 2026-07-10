@@ -1,6 +1,7 @@
 from fastapi import (APIRouter, Depends, File, Form, HTTPException, UploadFile)
 from sqlalchemy.orm import Session
 
+from app.agents.pii_scrub import scrub
 from app.api.cases import get_case
 from app.audit import audit
 from app.auth.deps import get_current_user
@@ -51,8 +52,9 @@ async def upload_sample(file: UploadFile = File(...),
     data = await _read(file)
     path = save_upload(data, file.filename, f"u{user.id}/samples")
     text, pending = extract_text(path)
+    scrubbed, _ = scrub(text) if text else ("", [])
     s = StyleSample(owner_user_id=user.id, document_type_id=document_type_id,
-                    file_path=path, original_text=text, scrubbed_text="",
+                    file_path=path, original_text=text, scrubbed_text=scrubbed,
                     status="ocr_pending" if pending else "ok")
     db.add(s); db.flush()
     audit(db, user.id, "upload.sample", "style_sample", s.id); db.commit()
