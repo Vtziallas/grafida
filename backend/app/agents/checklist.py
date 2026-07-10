@@ -1,3 +1,4 @@
+from app.agents.consistency import check_consistency
 from app.models import ChecklistItem
 
 ATTESTATION = ("Έλεγξα και εγκρίνω το έγγραφο ως δικηγόρος. "
@@ -7,6 +8,7 @@ ATTESTATION = ("Έλεγξα και εγκρίνω το έγγραφο ως δι
 def run_checks(db, doc, case_file, content, dtype, extra_findings=None):
     db.query(ChecklistItem).filter_by(document_id=doc.id).delete()
     items = list(extra_findings or [])
+    items.extend(check_consistency(case_file, content))
     if content.count("[ΠΡΟΣ ΕΠΑΛΗΘΕΥΣΗ"):
         items.append({"severity": "red", "source_agent": "citation",
                       "text": f"{content.count('[ΠΡΟΣ ΕΠΑΛΗΘΕΥΣΗ')} νομικές αναφορές "

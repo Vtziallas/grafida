@@ -79,6 +79,67 @@ def get_document(doc_id: int, user: User = Depends(get_current_user),
     }
 
 
+class OverrideIn(BaseModel):
+    note: str
+
+
+class ApproveIn(BaseModel):
+    attestation: bool = False
+
+
+def _get_item(db, user, item_id) -> ChecklistItem:
+    it = db.query(ChecklistItem).filter_by(id=item_id, owner_user_id=user.id).first()
+    if not it:
+        raise HTTPException(404)
+    return it
+
+
+@router.post("/checklist-items/{item_id}/resolve")
+def resolve_item(item_id: int, user: User = Depends(get_current_user),
+                 db: Session = Depends(get_db)):
+    it = _get_item(db, user, item_id)
+    it.status, it.resolved_by = "resolved", user.id
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/checklist-items/{item_id}/override")
+def override_item(item_id: int, body: OverrideIn,
+                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if not body.note.strip():
+        raise HTTPException(400, "Απαιτείται αιτιολόγηση για την παράκαμψη")
+    it = _get_item(db, user, item_id)
+    it.status, it.override_note, it.resolved_by = "overridden", body.note, user.id
+    audit(db, user.id, "checklist.override", "checklist_item", it.id,
+          {"note": body.note})
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/documents/{doc_id}/approve")
+def approve(doc_id: int, body: ApproveIn,
+            user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    d = get_doc(db, user, doc_id)
+    if not body.attestation:
+        raise HTTPException(400, "Απαιτείται η βεβαίωση του δικηγόρου")
+    open_reds = [i for i in db.query(ChecklistItem)
+                 .filter_by(document_id=d.id, severity="red", status="open")
+                 if i.source_agent != "attestation"]
+    if open_reds:
+        raise HTTPException(400,
+            f"{len(open_reds)} κρίσιμα σημεία της λίστας ελέγχου εκκρεμούν")
+    att = (db.query(ChecklistItem)
+           .filter_by(document_id=d.id, source_agent="attestation").first())
+    if att:
+        att.status, att.resolved_by = "resolved", user.id
+    d.status = "approved"
+    ver = db.get(DocumentVersion, d.current_version_id)
+    audit(db, user.id, "document.approve", "document", d.id,
+          {"content_hash": ver.content_hash if ver else ""})
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/documents/{doc_id}/versions")
 def save_version(doc_id: int, body: VersionIn,
                  user: User = Depends(get_current_user), db: Session = Depends(get_db)):
