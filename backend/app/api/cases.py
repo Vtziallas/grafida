@@ -2,8 +2,11 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from rapidfuzz import fuzz as _fuzz
 from sqlalchemy.orm import Session
 
+from app.agents.intake_extract import run_extraction
+from app.ai.factory import get_provider
 from app.audit import audit
 from app.auth.deps import get_current_user
 from app.db import get_db
@@ -129,6 +132,46 @@ def add_deadline(case_id: int, body: DeadlineIn,
     d = Deadline(owner_user_id=user.id, case_id=case_id, **body.model_dump())
     db.add(d); db.commit()
     return {"id": d.id}
+
+
+@router.post("/cases/{case_id}/extract")
+def extract(case_id: int, user: User = Depends(get_current_user),
+            db: Session = Depends(get_db)):
+    c = get_case(db, user, case_id)
+    texts = [c.facts_text] + [e.extracted_text for e in
+             db.query(Evidence).filter_by(case_id=c.id) if e.extracted_text]
+    source = "\n\n".join(t for t in texts if t)
+    if not source.strip():
+        raise HTTPException(400, "Δεν υπάρχουν γεγονότα ή αποδεικτικά για εξαγωγή")
+    data = run_extraction(get_provider(), source)
+    db.query(Party).filter_by(case_id=c.id, confirmed_by_lawyer=False).delete()
+    db.query(CaseFact).filter_by(case_id=c.id, confirmed_by_lawyer=False).delete()
+    for p in data["parties"]:
+        db.add(Party(owner_user_id=user.id, case_id=c.id, name=p.get("name") or "",
+                     role=p.get("role", ""), source_quote=p.get("source_quote", ""),
+                     confidence=p.get("confidence", 0.0)))
+    kind_map = {"dates": "date", "amounts": "amount", "claims": "claim"}
+    new_facts = []
+    for key, kind in kind_map.items():
+        for it in data[key]:
+            new_facts.append(CaseFact(
+                owner_user_id=user.id, case_id=c.id, kind=kind,
+                value=it.get("value"), description=it.get("description", ""),
+                source_quote=it.get("source_quote", ""),
+                confidence=it.get("confidence", 0.0)))
+    group = 1
+    amounts = [f for f in new_facts if f.kind == "amount" and f.value]
+    for i in range(len(amounts)):
+        for j in range(i + 1, len(amounts)):
+            a, b = amounts[i], amounts[j]
+            if (a.value != b.value and
+                    _fuzz.ratio(a.description, b.description) >= 80):
+                a.conflict_group = b.conflict_group = group
+                group += 1
+    db.add_all(new_facts)
+    audit(db, user.id, "extract.run", "case", c.id)
+    db.commit()
+    return detail(case_id, user, db)
 
 
 @router.patch("/parties/{party_id}")
