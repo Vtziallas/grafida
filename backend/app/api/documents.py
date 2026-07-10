@@ -1,8 +1,13 @@
 import hashlib
+import os
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.export.docx import export_docx
 
 from app.agents.pipeline import generate_document
 from app.api.cases import get_case
@@ -138,6 +143,26 @@ def approve(doc_id: int, body: ApproveIn,
           {"content_hash": ver.content_hash if ver else ""})
     db.commit()
     return {"ok": True}
+
+
+@router.get("/documents/{doc_id}/export")
+def export(doc_id: int, user: User = Depends(get_current_user),
+           db: Session = Depends(get_db)):
+    d = get_doc(db, user, doc_id)
+    if d.status == "draft":
+        raise HTTPException(403,
+            "Το έγγραφο πρέπει πρώτα να εγκριθεί από δικηγόρο")
+    ver = db.get(DocumentVersion, d.current_version_id)
+    if not ver:
+        raise HTTPException(400, "Δεν υπάρχει περιεχόμενο")
+    out = os.path.join(settings.storage_dir, "exports", f"doc_{d.id}.docx")
+    export_docx(d.title, ver.content, out)
+    if d.status == "approved":
+        d.status = "exported"
+    audit(db, user.id, "document.export", "document", d.id)
+    db.commit()
+    return FileResponse(out, filename=f"{d.title}.docx",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
 
 @router.post("/documents/{doc_id}/versions")
