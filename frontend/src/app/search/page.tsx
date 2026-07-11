@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { Btn, Card, ErrorNote, Input, PageTitle } from "@/components/ui";
 
 const KIND: Record<string, string> = {
   document: "Έγγραφο", evidence: "Σχετικό", sample: "Δείγμα ύφους" };
@@ -16,30 +17,32 @@ export default function Search() {
   const [err, setErr] = useState("");
   return (
     <div>
-      <form className="mb-4 flex gap-2" onSubmit={async e => { e.preventDefault();
+      <PageTitle>Αναζήτηση</PageTitle>
+      <form className="mb-4 flex gap-3" onSubmit={async e => { e.preventDefault();
         setErr("");
         try {
           setRows(await (await api(
             `/api/search?q=${encodeURIComponent(q)}`)).json());
           setDone(true);
         } catch (x) { setErr((x as Error).message); } }}>
-        <input className="flex-1 rounded border border-gray-300 p-2"
-          placeholder="Αναζήτηση σε υποθέσεις, έγγραφα, δείγματα…"
-          value={q} onChange={e => setQ(e.target.value)} />
-        <button className="rounded bg-indigo-600 px-4 text-white">Αναζήτηση</button>
+        <Input className="flex-1" value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Αναζήτηση σε υποθέσεις, έγγραφα, δείγματα…" />
+        <Btn>Αναζήτηση</Btn>
       </form>
-      {err && <p className="mb-2 text-sm text-red-600">{err}</p>}
+      <div className="mb-3"><ErrorNote>{err}</ErrorNote></div>
       {done && rows.length === 0 &&
-        <p className="text-gray-500">Δεν βρέθηκε σχετικό υλικό στο αρχείο σας.</p>}
-      {rows.map((r, i) => (
-        <div key={i} className="mb-2 rounded border border-gray-200 bg-white p-3 text-sm">
-          <span className="mr-2 rounded bg-gray-100 px-2 py-0.5 text-xs">
-            {KIND[r.kind] ?? r.kind}</span>
-          {r.case_id &&
-            <Link className="text-indigo-700 underline"
-                  href={`/cases/${r.case_id}`}>Υπόθεση #{r.case_id}</Link>}
-          <p className="mt-1 text-gray-600">…{r.snippet}…</p>
-        </div>))}
+        <p className="text-sm text-ink-2">Δεν βρέθηκε σχετικό υλικό στο αρχείο σας.</p>}
+      <div className="space-y-2">
+        {rows.map((r, i) => (
+          <Card key={i} className="!p-4 text-sm">
+            <span className="mr-2 rounded-full bg-canvas px-2.5 py-0.5 text-xs text-ink-2">
+              {KIND[r.kind] ?? r.kind}</span>
+            {r.case_id &&
+              <Link className="text-accent hover:underline"
+                    href={`/cases/${r.case_id}`}>Υπόθεση #{r.case_id}</Link>}
+            <p className="mt-2 text-ink-2">…{r.snippet}…</p>
+          </Card>))}
+      </div>
     </div>
   );
 }

@@ -12,6 +12,7 @@ router = APIRouter(prefix="/api/clients")
 class ClientIn(BaseModel):
     name: str
     afm: str | None = None
+    id_number: str | None = None
     email: str | None = None
     phone: str | None = None
     notes: str = ""
@@ -28,7 +29,8 @@ def create(body: ClientIn, user: User = Depends(get_current_user),
 @router.get("")
 def list_(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.query(Client).filter_by(owner_user_id=user.id).order_by(Client.name).all()
-    return [{"id": c.id, "name": c.name, "afm": c.afm, "phone": c.phone} for c in rows]
+    return [{"id": c.id, "name": c.name, "afm": c.afm, "phone": c.phone,
+             "email": c.email} for c in rows]
 
 
 @router.get("/{client_id}")
@@ -38,6 +40,8 @@ def detail(client_id: int, user: User = Depends(get_current_user),
     if not c:
         raise HTTPException(404)
     cases = db.query(Case).filter_by(client_id=c.id, owner_user_id=user.id).all()
-    return {"id": c.id, "name": c.name, "afm": c.afm, "email": c.email,
-            "phone": c.phone, "notes": c.notes,
-            "cases": [{"id": k.id, "title": k.title, "status": k.status} for k in cases]}
+    return {"id": c.id, "name": c.name, "afm": c.afm, "id_number": c.id_number,
+            "email": c.email, "phone": c.phone, "notes": c.notes,
+            "cases": [{"id": k.id, "title": k.title, "status": k.status,
+                       "court_name": k.court_name, "next_action": k.next_action}
+                      for k in cases]}

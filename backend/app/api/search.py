@@ -20,6 +20,33 @@ def search(q: str, user: User = Depends(get_current_user),
     return hybrid_search(db, user.id, q.strip(), get_provider())
 
 
+@router.get("/deadlines")
+def all_deadlines(user: User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    today = date.today()
+    rows = (db.query(Deadline).filter_by(owner_user_id=user.id)
+            .order_by(Deadline.due_date).all())
+    cmap = {c.id: c.title for c in
+            db.query(Case).filter_by(owner_user_id=user.id)}
+    return [{"id": d.id, "case_id": d.case_id,
+             "case_title": cmap.get(d.case_id, ""), "title": d.title,
+             "due_date": str(d.due_date),
+             "days_left": (d.due_date - today).days,
+             "completed": d.completed_at is not None} for d in rows]
+
+
+@router.post("/deadlines/{deadline_id}/complete")
+def complete_deadline(deadline_id: int, user: User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    d = db.query(Deadline).filter_by(id=deadline_id, owner_user_id=user.id).first()
+    if not d:
+        raise HTTPException(404)
+    from datetime import datetime
+    d.completed_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/dashboard")
 def dashboard(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     cases = db.query(Case).filter_by(owner_user_id=user.id, status="open").all()

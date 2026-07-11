@@ -32,6 +32,7 @@ class Client(Base, TS, Owned):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
     afm: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    id_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
@@ -82,6 +83,7 @@ class Deadline(Base, TS, Owned):
     due_date: Mapped[date] = mapped_column(Date)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    alerts_sent: Mapped[list] = mapped_column(JSON, default=list)
 
 
 class DocumentType(Base, TS):
