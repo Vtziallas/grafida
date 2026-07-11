@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     cors_origin: str = "http://localhost:3000"
     seed_email: str = "owner@example.com"
     seed_password: str = "grafida123"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    notify_email: str = ""
 
 
 settings = Settings()
